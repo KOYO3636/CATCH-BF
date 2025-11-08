@@ -128,6 +128,7 @@
 
         async function createDevWalletProvider(rpcUrl, privKey, chainIdHex) {
             // Lazy import ethers only if needed
+            // NOTE: The import must be wrapped to run only when needed, otherwise it throws errors in non-EVM environments.
             const { Wallet, JsonRpcProvider } = await import('https://esm.sh/ethers@6')
             const provider = new JsonRpcProvider(rpcUrl)
             const wallet = new Wallet(privKey, provider)
@@ -246,6 +247,7 @@
         function getAddress(){ return state.address }
         function shortAddress(){ return short(state.address) }
 
+        // EXPOSED GLOBALLY FOR GAME ACCESS
         window.WalletKit = { init, connect, ensureBaseNetwork, isConnected, getAddress, short: shortAddress };
 
 
@@ -494,7 +496,7 @@
                 for (let i = 0; i < 3; i++) drawHeart(startX + i * (heartSize + gap), 22, heartSize, i < gameState.lives);
 
                 ctx.fillStyle = '#fff';
-                // CHANGED: HUD font size from 20px to 16px
+                // HUD font size is now 16px
                 ctx.font = 'bold 16px Inter, sans-serif'; 
                 ctx.textAlign = 'left';
                 ctx.textBaseline = 'middle';
@@ -564,7 +566,7 @@
                     ctx.fillRect(0, 0, w, h);
                     
                     ctx.fillStyle = '#1f2937'; 
-                    // CHANGED: GAME OVER font size from 100px to 64px
+                    // GAME OVER font size is now 64px
                     ctx.font = 'bold 64px Inter, sans-serif'; 
                     ctx.textAlign = 'center';
                     ctx.textBaseline = 'middle';
@@ -591,7 +593,7 @@
                     ctx.fillStyle = 'rgba(0,0,0,0.65)';
                     ctx.fillRect(0, 0, w, h);
                     ctx.fillStyle = '#fff';
-                    // CHANGED: PAUSED font size from 84px to 54px
+                    // PAUSED font size is now 54px
                     ctx.font = 'bold 54px Inter, sans-serif'; 
                     ctx.textAlign = 'center';
                     ctx.textBaseline = 'middle';
@@ -797,6 +799,13 @@
             };
 
             // --- Initialization ---
+            // Function to notify Farcaster SDK that the app is ready (addresses the "Ready not called" issue)
+            const notifySdkReady = () => {
+                if (window.sdk && window.sdk.actions && window.sdk.actions.ready) {
+                    window.sdk.actions.ready();
+                }
+            };
+
 
             const init = () => {
                 canvas = document.getElementById('gameCanvas');
@@ -824,6 +833,7 @@
                     document.getElementById('gameControls').setAttribute('data-connected', 'false');
                     document.getElementById('disconnectBtn').classList.add('hidden');
                     document.getElementById('connectionStatus').textContent = "Status: Disconnected";
+                    notifySdkReady(); // Notify SDK when disconnecting (splash screen might be re-shown)
                 });
                 
                 // Start game loop
@@ -831,6 +841,8 @@
                 
                 // Initial draw for connection screen
                 draw(canvas.width / dpr, canvas.height / dpr);
+                
+                notifySdkReady(); // Notify Farcaster SDK immediately upon init
 
                 // Initialize Wallet Connection Screen
                 document.getElementById('connectWalletBtn').addEventListener('click', async () => {
