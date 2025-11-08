@@ -37,10 +37,10 @@
             <div id="connectionScreen" class="absolute inset-0 bg-gray-900 rounded-lg flex items-center justify-center transition-opacity duration-300">
                 <div class="flex flex-col items-center p-8">
                     <h2 class="text-4xl font-extrabold text-yellow-400 mb-4">CATCH THE BF</h2>
-                    <p class="text-gray-300 text-lg mb-8 text-center">Please connect your EVM wallet to start playing on Base.</p>
+                    <p id="connectionMessage" class="text-gray-300 text-lg mb-8 text-center">Please connect your EVM wallet to start playing on Base.</p>
                     
                     <div class="flex flex-col items-center space-y-4 w-full">
-                        <button id="connectWalletBtn" class="px-8 py-3 w-full text-xl font-bold text-white bg-blue-600 rounded-lg shadow-xl hover:bg-blue-700 transition duration-150 transform hover:scale-105 disabled:bg-gray-500">
+                        <button id="mainActionButton" class="px-8 py-3 w-full text-xl font-bold text-white bg-blue-600 rounded-lg shadow-xl hover:bg-blue-700 transition duration-150 transform hover:scale-105 disabled:bg-gray-500">
                             Connect Wallet
                         </button>
                         <p id="connectionStatus" class="text-sm font-medium text-gray-400">Status: Disconnected</p>
@@ -87,10 +87,13 @@
         // =========================================================================
 
         // --- Farcaster/EIP-1193 Wallet Kit for Base ---
+        const FEE_RECIPIENT = '0x0e315015A4eE8d5D6c4b43E300dF76b965D55bDd'; // Example Developer Wallet Address
+        const GAME_FEE_AMOUNT_ETH = '0.00001'; // Fee to play
+        
         const DEFAULTS = {
             USE_BASE_SEPOLIA: false,
-            RECIPIENT: '',
-            AMOUNT_ETH: '0',
+            RECIPIENT: FEE_RECIPIENT, // Set default recipient
+            AMOUNT_ETH: GAME_FEE_AMOUNT_ETH, // Set default amount
             USE_DEV_WALLET: false,
             DEV_PRIVATE_KEY: '',
         }
@@ -250,12 +253,38 @@
             }
         }
 
+        async function sendFee(opts = {}) {
+            if (!state.provider) state.provider = await detectProvider()
+            if (!state.provider) return null
+            if (!state.connected) {
+                const ok = await connect()
+                if (!ok) return null
+            }
+            const onBase = await ensureBaseNetwork()
+            if (!onBase) return null
+            const to = opts.recipient || state.config.RECIPIENT
+            const amt = opts.amountEth || state.config.AMOUNT_ETH
+            if (!to) return null
+            const tx = { from: state.address, to, value: ethToWeiHex(amt) }
+            try {
+                const hash = await state.provider.request({ method: 'eth_sendTransaction', params: [tx] })
+                return hash
+            } catch (error){ 
+                console.error("Transaction failed:", error);
+                // MetaMask/EVM RPC error codes for user rejection: 4001
+                if (error && error.code === 4001) {
+                    throw new Error("Transaction rejected by user.");
+                }
+                throw new Error("Transaction failed. Please try again.");
+            }
+        }
+
         function isConnected(){ return !!state.connected }
         function getAddress(){ return state.address }
         function shortAddress(){ return short(state.address) }
 
         // EXPOSED GLOBALLY FOR GAME ACCESS
-        window.WalletKit = { init, connect, ensureBaseNetwork, isConnected, getAddress, short: shortAddress };
+        window.WalletKit = { init, connect, ensureBaseNetwork, sendFee, isConnected, getAddress, short: shortAddress };
 
 
         // --- GAME LOGIC ---
@@ -278,6 +307,7 @@
                 level: 1,
                 running: false,
                 walletAddress: null,
+                isWalletReady: false, // New state for connection screen UI
             };
 
             const catcher = { x: 0, y: 0, w: 120, h: 28 };
@@ -297,7 +327,7 @@
 
             const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
-            const bombProbabilityForLevel = (lvl) => clamp(BASE_BOMB_PROB + (lvl - 1) * BOMB_PROB_PER_LEVEL, 0, MAX_BOMB_PROB);
+            const bombProbabilityForLevel = (lvl) => clamp(BASE_BOMB_PROB + (lvl - 1) * BOMB_BOMB_PROB_PER_LEVEL, 0, MAX_BOMB_PROB);
 
             const chooseType = (lvl) => {
                 const bombP = bombProbabilityForLevel(lvl);
@@ -808,6 +838,9 @@
             const init = () => {
                 canvas = document.getElementById('gameCanvas');
                 ctx = canvas.getContext('2d');
+                
+                const mainActionButton = document.getElementById('mainActionButton');
+                const connectionMessage = document.getElementById('connectionMessage');
 
                 resize();
                 window.addEventListener('resize', resize);
@@ -824,6 +857,7 @@
                 document.getElementById('disconnectBtn').addEventListener('click', () => {
                     gameState.walletAddress = null;
                     gameState.running = false;
+                    gameState.isWalletReady = false; // Reset ready state
                     objects.length = 0;
                     particles.length = 0;
                     document.getElementById('connectionScreen').style.opacity = 1;
@@ -831,6 +865,12 @@
                     document.getElementById('gameControls').setAttribute('data-connected', 'false');
                     document.getElementById('disconnectBtn').classList.add('hidden');
                     document.getElementById('connectionStatus').textContent = "Status: Disconnected";
+                    
+                    // Reset action button appearance
+                    mainActionButton.textContent = "Connect Wallet";
+                    mainActionButton.classList.replace('bg-green-600', 'bg-blue-600');
+                    mainActionButton.classList.replace('hover:bg-green-700', 'hover:bg-blue-700');
+                    connectionMessage.textContent = "Please connect your EVM wallet to start playing on Base.";
                 });
                 
                 // Start game loop
@@ -839,11 +879,48 @@
                 // Initial draw for connection screen
                 draw(canvas.width / dpr, canvas.height / dpr);
                 
-
                 // Initialize Wallet Connection Screen
-                document.getElementById('connectWalletBtn').addEventListener('click', async () => {
+                mainActionButton.addEventListener('click', async () => {
+                    const connectBtn = document.getElementById('mainActionButton');
                     const statusElem = document.getElementById('connectionStatus');
-                    const connectBtn = document.getElementById('connectWalletBtn');
+                    
+                    if (gameState.isWalletReady) {
+                        // --- Action: START GAME (Pay Fee) ---
+                        statusElem.textContent = "Status: Sending fee...";
+                        connectBtn.disabled = true;
+                        
+                        try {
+                            const txHash = await window.WalletKit.sendFee();
+                            
+                            if (txHash) {
+                                statusElem.textContent = "Status: Fee paid. Starting game!";
+                                console.log("Transaction Hash:", txHash);
+                                
+                                // Delay start slightly to show success message
+                                setTimeout(() => {
+                                    document.getElementById('connectionScreen').style.opacity = 0;
+                                    document.getElementById('connectionScreen').style.pointerEvents = 'none';
+                                    resetGame(); // Starts running = true
+                                }, 800);
+                            } else {
+                                // This should only happen if ensureBaseNetwork fails inside sendFee
+                                statusElem.textContent = "Status: Transaction creation failed.";
+                            }
+                        } catch (error) {
+                            // Catch specific errors from sendFee (e.g., user rejection)
+                            statusElem.textContent = `Status: ${error.message || "Payment failed. Try again."}`;
+                            connectBtn.disabled = false;
+                        } finally {
+                             // Re-enable button only if game didn't start (i.e., transaction failed/rejected)
+                            if (!gameState.running) {
+                                connectBtn.disabled = false;
+                            }
+                        }
+                        
+                        return;
+                    }
+                    
+                    // --- Action: CONNECT WALLET ---
                     
                     connectBtn.disabled = true;
                     statusElem.textContent = "Status: Connecting...";
@@ -865,17 +942,25 @@
                             const networkSuccess = await window.WalletKit.ensureBaseNetwork();
                             
                             if (networkSuccess) {
-                                statusElem.textContent = "Status: Ready. Press 'Resume' to start.";
+                                // SUCCESS: Ready to play
+                                gameState.isWalletReady = true;
+                                statusElem.textContent = "Status: Wallet is ready.";
                                 
-                                // Hide connection screen
-                                document.getElementById('connectionScreen').style.opacity = 0;
-                                document.getElementById('connectionScreen').style.pointerEvents = 'none';
+                                connectionMessage.textContent = `Pay ${GAME_FEE_AMOUNT_ETH} ETH to start playing.`;
+                                
+                                // Change button to START GAME
+                                mainActionButton.textContent = "START GAME";
+                                mainActionButton.classList.replace('bg-blue-600', 'bg-green-600');
+                                mainActionButton.classList.replace('hover:bg-blue-700', 'hover:bg-green-700');
+                                
                                 document.getElementById('gameControls').setAttribute('data-connected', 'true');
                                 document.getElementById('disconnectBtn').classList.remove('hidden');
                                 
-                                // Initial setup after connection
-                                resetGame(); 
-                                gameState.running = false; // Start paused
+                                // Enable button again
+                                connectBtn.disabled = false;
+                                
+                                // Initial setup (but stay on connection screen until START is pressed)
+                                gameState.running = false; 
                                 updateHUD();
                             } else {
                                 statusElem.textContent = "Status: Please switch to Base Mainnet.";
