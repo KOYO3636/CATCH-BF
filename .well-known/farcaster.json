@@ -1,8 +1,8 @@
 {
   "accountAssociation": {
-    "header": "eyJmaWQiOjEzOTUxNjksInR5cGUiOiJjdXN0b2R5Iiwia2V5IjoiMHg0MzUzYTkzMTRjMDI4MmU5ZkM4NmI4NmFCNjNDMkM3MTI3YTMxN2EwIn0",
-    "payload": "eyJkb21haW4iOiJiYXNlanVtcC03NTc1LnZlcmNlbC5hcHAifQ",
-    "signature": ""
+    "header": "eyJmaWQiOjUyOTk2MCwidHlwZSI6ImF1dGgiLCJrZXkiOiIweDI4ODEzOUM2MjM3QjM0MUE4MzkwMDAxNjU1YTU3NjYxODA2MzIxZkYifQ",
+    "payload": "eyJkb21haW4iOiJjYXRjaC1iZi52ZXJjZWwuYXBwIn0",
+    "signature": "wNyvhmZH6z5UDC4I9mYYBIkta1sFn9iY/rm7K7SdQV9+VgcyqspZBan9mEykCMxQ9ThYE6bZbU7Adq8An22XVhw="
   },
   "baseBuilder": {
     "ownerAddress": "0xCD9008Ac354c57c990a0e5681c21116253FD73E9" 
@@ -10,7 +10,7 @@
   "miniapp": {
     "version": "1",
     "name": "Crypto Portfolio Tracker",
-    "homeUrl": "https://basejump-7575.vercel.app/",
+    "homeUrl": "https://catch-bf.vercel.app/",
     "iconUrl": "https://basejump-7575.vercel.app/images/banner.png",
     "splashImageUrl": "https://basejump-7575.vercel.app/images/basejump-splash.png",
     "splashBackgroundColor": "#000000",
