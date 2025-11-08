@@ -1,0 +1,891 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CATCH THE BF</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom font */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+
+        /* Ensure the canvas fills the container */
+        #gameCanvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            cursor: grabbing;
+            touch-action: none;
+        }
+
+        /* Hide the main control buttons when the connect screen is visible */
+        .game-controls[data-connected="false"] {
+            display: none !important;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 flex items-center justify-center min-h-screen p-4">
+
+    <div id="appContainer" class="flex flex-col w-full max-w-lg h-[90vh] bg-gray-100 rounded-xl shadow-2xl">
+        <div class="flex-grow relative overflow-hidden rounded-lg bg-white">
+            <!-- Game Canvas -->
+            <canvas id="gameCanvas"></canvas>
+            
+            <!-- Connection Overlay -->
+            <div id="connectionScreen" class="absolute inset-0 bg-gray-900 rounded-lg flex items-center justify-center transition-opacity duration-300">
+                <div class="flex flex-col items-center p-8">
+                    <h2 class="text-4xl font-extrabold text-yellow-400 mb-4">CATCH THE BF</h2>
+                    <p class="text-gray-300 text-lg mb-8 text-center">Please connect your EVM wallet to start playing on Base.</p>
+                    
+                    <div class="flex flex-col items-center space-y-4 w-full">
+                        <button id="connectWalletBtn" class="px-8 py-3 w-full text-xl font-bold text-white bg-blue-600 rounded-lg shadow-xl hover:bg-blue-700 transition duration-150 transform hover:scale-105 disabled:bg-gray-500">
+                            Connect Wallet
+                        </button>
+                        <p id="connectionStatus" class="text-sm font-medium text-gray-400">Status: Disconnected</p>
+                        <p class="text-xs text-gray-500 mt-4 text-center">
+                            Supports Rabby Wallet, MetaMask, and Farcaster providers.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Game controls always visible -->
+        <div id="gameControls" class="flex justify-center p-3 gap-4 bg-gray-50 rounded-b-xl border-t border-gray-200 game-controls" data-connected="false">
+            <button id="resetGameBtn" class="px-4 py-2 text-sm font-semibold text-white bg-green-600 rounded-lg shadow-md hover:bg-green-700 transition duration-150 transform hover:scale-105">
+                <!-- Reset Icon -->
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 inline mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 0014.17 4H5.98a4 4 0 100 8h.02c.7 0 1.343-.205 1.9-.554M16 16v-5h-.582m0 0a8.001 8.001 0 00-11.356 2.05A4 4 0 1018.02 12h-.02a.7.7 0 01-1.9.554" />
+                </svg>
+                Reset Game
+            </button>
+            <button id="toggleRunningBtn" class="px-4 py-2 text-sm font-semibold text-white rounded-lg shadow-md transition duration-150 transform hover:scale-105 bg-blue-500 hover:bg-blue-600">
+                <!-- Resume Icon -->
+                <svg id="toggleIcon" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 inline mr-1" viewBox="0 0 20 20" fill="currentColor">
+                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd" />
+                </svg>
+                <span id="toggleText">Resume</span>
+            </button>
+            <button id="disconnectBtn" class="px-4 py-2 text-sm font-semibold text-white bg-red-600 rounded-lg shadow-md hover:bg-red-700 transition duration-150 transform hover:scale-105 hidden">
+                Disconnect
+            </button>
+        </div>
+        
+        <div class="text-center text-xs text-gray-600 mt-2 p-2">
+            <p class="font-medium">Instructions:</p>
+            <p class="text-gray-500">Click or touch to move the catcher. Use Arrow Keys or Spacebar (Pause) on desktop.</p>
+        </div>
+    </div>
+
+    <script>
+        // --- Farcaster/EIP-1193 Wallet Kit for Base ---
+        const DEFAULTS = {
+            USE_BASE_SEPOLIA: false,
+            RECIPIENT: '',
+            AMOUNT_ETH: '0',
+            USE_DEV_WALLET: false,
+            DEV_PRIVATE_KEY: '',
+        }
+
+        const BASE = { chainId: '0x2105', rpc: 'https://mainnet.base.org', explorer: 'https://basescan.org/tx/' }
+        const BASE_SEPOLIA = { chainId: '0x14a34', rpc: 'https://sepolia.base.org', explorer: 'https://sepolia.basescan.org/tx/' }
+
+        const state = {
+            provider: null,
+            address: null,
+            connected: false,
+            config: { ...DEFAULTS, TARGET: BASE },
+        }
+
+        function short(addr) { if (!addr) return ''; return addr.slice(0,6) + '...' + addr.slice(-4) }
+
+        function ethToWeiHex(amountStr) {
+            try {
+                const s = String(amountStr).trim()
+                const [wholeRaw, fracRaw = ''] = s.split('.')
+                const whole = wholeRaw || '0'
+                const fracPadded = (fracRaw + '0'.repeat(18)).slice(0, 18)
+                const WEI = BigInt('1000000000000000000')
+                const wholeWei = BigInt(whole) * WEI
+                const fracWei = BigInt(fracPadded)
+                return '0x' + (wholeWei + fracWei).toString(16)
+            } catch (_) { return '0x0' }
+        }
+
+        async function getFarcasterProviderFromHost() {
+            try {
+                const caps = await window?.sdk?.getCapabilities?.()
+                const has = Array.isArray(caps) && caps.includes('wallet.getEthereumProvider')
+                if (has) {
+                    const p = window?.sdk?.wallet?.getEthereumProvider?.()
+                    if (p) return p
+                }
+            } catch (_) {}
+            return null
+        }
+
+        async function createDevWalletProvider(rpcUrl, privKey, chainIdHex) {
+            // Lazy import ethers only if needed
+            const { Wallet, JsonRpcProvider } = await import('https://esm.sh/ethers@6')
+            const provider = new JsonRpcProvider(rpcUrl)
+            const wallet = new Wallet(privKey, provider)
+            const listeners = { accountsChanged: [], disconnect: [] }
+            async function request({ method, params = [] }) {
+                switch (method) {
+                    case 'eth_accounts':
+                    case 'eth_requestAccounts':
+                        return [wallet.address]
+                    case 'eth_chainId':
+                        return chainIdHex
+                    case 'wallet_switchEthereumChain': {
+                        const target = params?.[0]?.chainId
+                        if (target && target !== chainIdHex) {
+                            const err = new Error('Dev wallet cannot switch chain; change rpcUrl')
+                            err.code = 4902; throw err
+                        }
+                        return null
+                    }
+                    case 'eth_sendTransaction': {
+                        const tx = params?.[0] || {}
+                        const req = { to: tx.to, data: tx.data }
+                        if (tx.value) req.value = BigInt(tx.value)
+                        const res = await wallet.sendTransaction(req)
+                        return res.hash
+                    }
+                    default:
+                        return provider.send(method, params)
+                }
+            }
+            return {
+                request,
+                on(ev, cb){ if (listeners[ev]) listeners[ev].push(cb) },
+                off(ev, cb){ if (!listeners[ev]) return; listeners[ev] = listeners[ev].filter((f)=>f!==cb) },
+                removeListener(ev, cb){ this.off(ev, cb) },
+                disconnect(){ for (const cb of listeners.disconnect) { try{cb()}catch(_){}} }
+            }
+        }
+
+        async function detectProvider() {
+            if (state.config.USE_DEV_WALLET && state.config.DEV_PRIVATE_KEY) {
+                const target = state.config.USE_BASE_SEPOLIA ? BASE_SEPOLIA : BASE
+                return await createDevWalletProvider(target.rpc, state.config.DEV_PRIVATE_KEY, target.chainId)
+            }
+            const farcaster = await getFarcasterProviderFromHost()
+            if (farcaster) return farcaster
+            const eth = window.ethereum
+            if (!eth) return null
+            const list = eth.providers
+            if (Array.isArray(list) && list.length) {
+                const metamask = list.find((p)=>p && p.isMetaMask)
+                if (metamask) return metamask
+                const coinbase = list.find((p)=>p && p.isCoinbaseWallet)
+                if (coinbase) return coinbase
+                return list[0]
+            }
+            return eth
+        }
+
+        async function init(config = {}) {
+            const merged = { ...DEFAULTS, ...config }
+            const TARGET = merged.USE_BASE_SEPOLIA ? BASE_SEPOLIA : BASE
+            state.config = { ...merged, TARGET }
+            state.provider = await detectProvider()
+            try {
+                const accs = await state.provider?.request?.({ method: 'eth_accounts' })
+                if (accs && accs[0]) { state.address = accs[0]; state.connected = true }
+            } catch (_) {}
+            return !!state.provider
+        }
+
+        async function connect() {
+            if (!state.provider) state.provider = await detectProvider()
+            if (!state.provider) return false
+            try {
+                const accounts = await state.provider.request({ method: 'eth_requestAccounts' })
+                state.address = accounts?.[0] || null
+                state.connected = !!state.address
+                return state.connected
+            } catch (_) {
+                return false
+            }
+        }
+
+        async function ensureBaseNetwork() {
+            if (!state.provider) return false
+            const need = state.config.TARGET.chainId
+            const isSepolia = need === BASE_SEPOLIA.chainId
+            const chainId = await state.provider.request({ method: 'eth_chainId' })
+            if (chainId === need) return true
+            try {
+                await state.provider.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: need }] })
+                return true
+            } catch (switchErr) {
+                if (switchErr && (switchErr.code === 4902 || String(switchErr.message||'').toLowerCase().includes('unrecognized'))) {
+                    try {
+                        await state.provider.request({
+                            method: 'wallet_addEthereumChain',
+                            params: [{
+                                chainId: need,
+                                chainName: isSepolia ? 'Base Sepolia' : 'Base',
+                                nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
+                                rpcUrls: [isSepolia ? BASE_SEPOLIA.rpc : BASE.rpc],
+                                blockExplorerUrls: [isSepolia ? BASE_SEPOLIA.explorer : BASE.explorer]
+                            }]
+                        })
+                        await state.provider.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: need }] })
+                        return true
+                    } catch (addErr) { return false }
+                }
+                return false
+            }
+        }
+
+        function isConnected(){ return !!state.connected }
+        function getAddress(){ return state.address }
+        function shortAddress(){ return short(state.address) }
+
+        window.WalletKit = { init, connect, ensureBaseNetwork, isConnected, getAddress, short: shortAddress };
+
+
+        // --- GAME LOGIC ---
+        const Game = (function() {
+            const INITIAL_SPAWN_INTERVAL = 900;
+            const MIN_SPAWN_INTERVAL = 300;
+            const GRAVITY = 300;
+            const BASE_BOMB_PROB = 0.25;
+            const BOMB_PROB_PER_LEVEL = 0.12; 
+            const MAX_BOMB_PROB = 0.95; 
+
+            let canvas, ctx;
+            let rafId = null;
+            let lastTime = performance.now();
+            
+            // Game State (equivalent to React State/Ref)
+            const gameState = {
+                score: 0,
+                lives: 3,
+                level: 1,
+                running: false,
+                walletAddress: null,
+            };
+
+            const catcher = { x: 0, y: 0, w: 120, h: 28 };
+            const objects = [];
+            const particles = [];
+            let spawnTimer = 0;
+            let spawnInterval = INITIAL_SPAWN_INTERVAL;
+            let nextObjectId = 1;
+            let dpr = window.devicePixelRatio || 1;
+            let dragging = false;
+            let prevLives = 3;
+            const flash = { active: false, age: 0, duration: 2.0 }; // Global GAME OVER flash
+            const hitFlash = { active: false, age: 0, duration: 0.15 }; // Catcher hit flash
+            const gameOverButtons = []; // Stores button regions for click detection
+
+            // --- Utility Functions ---
+
+            const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
+            const bombProbabilityForLevel = (lvl) => clamp(BASE_BOMB_PROB + (lvl - 1) * BOMB_PROB_PER_LEVEL, 0, MAX_BOMB_PROB);
+
+            const chooseType = (lvl) => {
+                const bombP = bombProbabilityForLevel(lvl);
+                return Math.random() < bombP
+                    ? { key: 'black', color: '#111827', score: 0, baseR: 18 } 
+                    : { key: 'red', color: '#2563eb', score: 1, baseR: 18 };
+            };
+
+            const spawnObject = (w) => {
+                const t = chooseType(gameState.level);
+                const size = t.baseR + (Math.random() - 0.5) * 6;
+                const x = Math.random() * (w - size * 2) + size;
+                const baseSpeed = 40 + Math.random() * 120 + (gameState.level - 1) * 15;
+                const vx = (Math.random() - 0.5) * 40;
+                const obj = { id: nextObjectId++, x, y: -size, r: size, vy: baseSpeed, vx, type: t.key, color: t.color, score: t.score };
+                objects.push(obj);
+            };
+
+            const createExplosion = (cx, cy, count = 40) => {
+                for (let i = 0; i < count; i++) {
+                    const angle = Math.random() * Math.PI * 2;
+                    const speed = 80 + Math.random() * 220;
+                    particles.push({
+                        x: cx,
+                        y: cy,
+                        vx: Math.cos(angle) * speed,
+                        vy: Math.sin(angle) * speed - 80,
+                        life: 0.8 + Math.random() * 0.8,
+                        size: 4 + Math.random() * 6,
+                        color: `hsl(${Math.random() * 60}, 80%, ${40 + Math.random() * 20}%)`,
+                        age: 0
+                    });
+                }
+            };
+            
+            const updateHUD = () => {
+                const toggleBtn = document.getElementById('toggleRunningBtn');
+                const toggleText = document.getElementById('toggleText');
+                const toggleIcon = document.getElementById('toggleIcon');
+                
+                if (toggleBtn) {
+                    toggleBtn.className = toggleBtn.className.replace(/bg-(yellow|blue)-(500|600)/g, '');
+                    toggleBtn.classList.add(gameState.running ? 'bg-yellow-500' : 'bg-blue-500');
+                    toggleBtn.classList.add(gameState.running ? 'hover:bg-yellow-600' : 'hover:bg-blue-600');
+                }
+
+                if (toggleText) toggleText.textContent = gameState.running ? 'Pause' : 'Resume';
+                if (toggleIcon) {
+                    // Update icon path based on running state
+                    const path = gameState.running 
+                        ? 'M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z' 
+                        : 'M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z';
+                    toggleIcon.querySelector('path').setAttribute('d', path);
+                }
+                
+                document.getElementById('resetGameBtn').disabled = !gameState.walletAddress;
+                document.getElementById('toggleRunningBtn').disabled = !gameState.walletAddress;
+            };
+
+            // --- Drawing Functions ---
+
+            const drawHeart = (x, y, size, filled) => {
+                ctx.save();
+                ctx.translate(x, y);
+                ctx.scale(size / 24, size / 24);
+                ctx.beginPath();
+                ctx.fillStyle = filled ? '#ef4444' : '#9ca3af'; 
+                ctx.moveTo(12, 21);
+                ctx.bezierCurveTo(-3, 7, 6, -3, 12, 6);
+                ctx.bezierCurveTo(18, -3, 27, 7, 12, 21);
+                ctx.fill();
+                ctx.restore();
+            };
+
+            const drawBaseLogo = (x, y, r) => {
+                ctx.save();
+                const baseColor = '#0052FF'; 
+                ctx.fillStyle = baseColor;
+                ctx.beginPath();
+                ctx.arc(x, y, r, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Cut out the horizontal slot (using the canvas background color to mask)
+                ctx.fillStyle = '#0ea5b7'; 
+                const slotW = r * 2 * 0.7; 
+                const slotH = r * 0.25;    
+                const slotX = x - r;      
+                const slotY = y - slotH / 2;
+                
+                ctx.fillRect(slotX, slotY, slotW, slotH);
+                ctx.restore();
+            };
+
+            const drawFireball = (x, y, r) => {
+                ctx.save();
+                
+                // 1. Draw bomb body (dark black)
+                ctx.beginPath();
+                ctx.fillStyle = '#111827';
+                ctx.arc(x, y, r, 0, Math.PI * 2);
+                ctx.fill();
+
+                // 2. Draw evil face (red)
+                ctx.fillStyle = '#dc2626'; 
+
+                // Left eye (triangle approximation)
+                ctx.beginPath();
+                ctx.moveTo(x - r * 0.5, y - r * 0.3);
+                ctx.lineTo(x - r * 0.1, y - r * 0.4);
+                ctx.lineTo(x - r * 0.3, y + r * 0.1);
+                ctx.closePath();
+                ctx.fill();
+
+                // Right eye
+                ctx.beginPath();
+                ctx.moveTo(x + r * 0.5, y - r * 0.3);
+                ctx.lineTo(x + r * 0.1, y - r * 0.4);
+                ctx.lineTo(x + r * 0.3, y + r * 0.1);
+                ctx.closePath();
+                ctx.fill();
+
+                // Mouth (jagged line approximation)
+                ctx.lineWidth = r * 0.15;
+                ctx.strokeStyle = '#dc2626';
+                ctx.beginPath();
+                ctx.moveTo(x - r * 0.6, y + r * 0.4);
+                ctx.lineTo(x - r * 0.3, y + r * 0.3);
+                ctx.lineTo(x, y + r * 0.5);
+                ctx.lineTo(x + r * 0.3, y + r * 0.3);
+                ctx.lineTo(x + r * 0.6, y + r * 0.4);
+                ctx.stroke();
+                
+                // 3. Draw fuse (simple)
+                const fuseX = x + r * 0.2;
+                const fuseY = y - r * 0.8;
+
+                // Brown/yellow fuse
+                ctx.lineWidth = r * 0.15;
+                ctx.strokeStyle = '#b45309'; // Brown
+                ctx.beginPath();
+                ctx.moveTo(x, y - r);
+                ctx.lineTo(fuseX, fuseY);
+                ctx.stroke();
+
+                // 4. Draw flame/glow effect
+                ctx.shadowBlur = r * 0.5;
+                ctx.shadowColor = 'rgba(255, 140, 0, 1)'; // Orange glow
+
+                // Inner flame (Yellow)
+                ctx.fillStyle = '#ffff00';
+                ctx.beginPath();
+                ctx.arc(fuseX, fuseY - r * 0.1, r * 0.25, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Outer flame (Red/Orange)
+                ctx.fillStyle = '#ff4500';
+                ctx.beginPath();
+                ctx.arc(fuseX, fuseY - r * 0.1, r * 0.15, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Reset
+                ctx.shadowBlur = 0;
+                ctx.lineWidth = 1;
+                ctx.strokeStyle = '#000';
+                ctx.restore();
+            };
+
+            const drawButton = (x, y, w, h, text, color) => {
+                ctx.fillStyle = color;
+                // Draw rounded rectangle button
+                ctx.beginPath();
+                const r = 8; // Corner radius
+                ctx.moveTo(x + r, y);
+                ctx.lineTo(x + w - r, y);
+                ctx.arcTo(x + w, y, x + w, y + r, r);
+                ctx.lineTo(x + w, y + h - r);
+                ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
+                ctx.lineTo(x + r, y + h);
+                ctx.arcTo(x, y + h, x, y + h - r, r);
+                ctx.lineTo(x, y + r);
+                ctx.arcTo(x, y, x + r, y, r);
+                ctx.fill();
+
+                // Button text
+                ctx.fillStyle = '#fff';
+                ctx.font = 'bold 16px Inter, sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(text, x + w / 2, y + h / 2);
+                return { x, y, w, h, text };
+            };
+
+            const draw = (w, h) => {
+                // 1. Clear background
+                ctx.fillStyle = '#0ea5b7'; 
+                ctx.fillRect(0, 0, w, h);
+
+                // 2. Draw HUD (Hearts and Score)
+                const heartSize = 28;
+                const gap = 10;
+                const totalWidth = 3 * heartSize + 2 * gap;
+                const startX = Math.round(w / 2 - totalWidth / 2); 
+                for (let i = 0; i < 3; i++) drawHeart(startX + i * (heartSize + gap), 22, heartSize, i < gameState.lives);
+
+                ctx.fillStyle = '#fff';
+                ctx.font = 'bold 20px Inter, sans-serif';
+                ctx.textAlign = 'left';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(`Score: ${gameState.score}`, 18, 22);
+                
+                ctx.textAlign = 'right';
+                ctx.textBaseline = 'middle';
+                
+                const shortAddr = window.WalletKit.short(gameState.walletAddress);
+                ctx.fillText(`Lvl: ${gameState.level} | Addr: ${shortAddr}`, w - 18, 22);
+
+
+                // 3. Draw ground/catcher area
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(0, h - 80, w, 80);
+
+                // 4. Draw Catcher
+                ctx.fillStyle = '#111827';
+                ctx.fillRect(catcher.x, catcher.y, catcher.w, catcher.h);
+                
+                // --- Draw Catcher Hit Flash ---
+                if (hitFlash.active) {
+                    const hf = hitFlash;
+                    const t = hf.age / hf.duration;
+                    const alpha = 1 - t; 
+                    const radius = catcher.w * 0.6 + t * 20; 
+
+                    ctx.globalAlpha = alpha * 0.8;
+                    ctx.fillStyle = 'rgba(255, 0, 0, 1)'; 
+
+                    ctx.beginPath();
+                    ctx.arc(catcher.x + catcher.w / 2, catcher.y + catcher.h / 2, radius, 0, Math.PI * 2);
+                    ctx.fill();
+                    
+                    ctx.globalAlpha = 1;
+                }
+
+                // 5. Draw Falling Objects
+                for (const o of objects) {
+                    if (o.type === 'black') drawFireball(o.x, o.y, o.r); 
+                    else drawBaseLogo(o.x, o.y, o.r); 
+                }
+
+                // 6. Draw Particles (explosion effect)
+                for (const p of particles) {
+                    const t = p.age / p.life;
+                    ctx.globalAlpha = 1 - t; 
+                    ctx.fillStyle = p.color;
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, p.size * (1 - t), 0, Math.PI * 2); 
+                    ctx.fill();
+                }
+                ctx.globalAlpha = 1;
+
+                // 7. Draw Global Damage Flash (Always drawn if active, regardless of age)
+                if (flash.active) {
+                    const a = 1 - Math.min(1, flash.age / flash.duration);
+                    ctx.fillStyle = `rgba(220,38,38,${a * 0.85})`; 
+                    ctx.fillRect(0, 0, w, h);
+                }
+                
+                gameOverButtons.length = 0; // Clear buttons array
+
+                // 8. Draw "GAME OVER" and buttons (ONLY if flash duration has passed)
+                if (!gameState.running && gameState.lives <= 0 && flash.age >= flash.duration) {
+                    ctx.fillStyle = 'rgba(0,0,0,0.65)';
+                    ctx.fillRect(0, 0, w, h);
+                    
+                    ctx.fillStyle = '#1f2937'; 
+                    ctx.font = 'bold 100px Inter, sans-serif'; 
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    
+                    ctx.shadowColor = 'rgba(255, 255, 255, 0.8)';
+                    ctx.shadowBlur = 10; 
+                    
+                    const gameOverY = h / 2 - 30;
+                    ctx.fillText('GAME OVER', w / 2, gameOverY);
+
+                    ctx.shadowBlur = 0;
+
+                    const buttonW = 150;
+                    const buttonH = 40;
+                    const totalButtonsWidth = buttonW; 
+                    const startX = w / 2 - totalButtonsWidth / 2; 
+                    const buttonY = gameOverY + 80;
+                    
+                    const resetBtn = drawButton(startX, buttonY, buttonW, buttonH, 'Reset Game', '#ef4444'); 
+                    gameOverButtons.push(resetBtn);
+                    
+                } else if (!gameState.running && gameState.lives > 0) {
+                    // Pause Screen
+                    ctx.fillStyle = 'rgba(0,0,0,0.65)';
+                    ctx.fillRect(0, 0, w, h);
+                    ctx.fillStyle = '#fff';
+                    ctx.font = 'bold 84px Inter, sans-serif';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    const pauseY = h / 2 - 30;
+                    ctx.fillText('PAUSED', w / 2, pauseY);
+                    
+                    const buttonW = 150;
+                    const buttonH = 40;
+                    const totalButtonsWidth = buttonW;
+                    const startX = w / 2 - totalButtonsWidth / 2;
+                    const buttonY = pauseY + 80;
+                    
+                    const resetBtn = drawButton(startX, buttonY, buttonW, buttonH, 'Reset Game', '#f97316'); 
+                    gameOverButtons.push(resetBtn);
+                }
+            };
+            
+            // --- Game Loop and Logic Update ---
+
+            const frame = (time) => {
+                const rect = canvas.getBoundingClientRect();
+                const dt = Math.min(1 / 30, (time - lastTime) / 1000); 
+                lastTime = time;
+
+                if (gameState.running) {
+                    // --- Object spawning logic ---
+                    spawnTimer += dt * 1000;
+                    if (spawnTimer >= spawnInterval) {
+                        spawnTimer = 0;
+                        spawnObject(rect.width);
+                    }
+
+                    // --- Object update and collision check ---
+                    for (let i = objects.length - 1; i >= 0; i--) {
+                        const o = objects[i];
+                        
+                        o.vy += GRAVITY * dt;
+                        o.x += o.vx * dt;
+                        o.y += o.vy * dt;
+
+                        if (o.y - o.r > rect.height - 80) {
+                            objects.splice(i, 1);
+                            continue;
+                        }
+
+                        if (o.x - o.r < 0 || o.x + o.r > rect.width) o.vx *= -0.6;
+
+                        // Check collision with catcher
+                        if (o.x > catcher.x && o.x < catcher.x + catcher.w && o.y + o.r > catcher.y && o.y - o.r < catcher.y + catcher.h) {
+                            objects.splice(i, 1);
+                            
+                            if (o.type === 'black') { // Fireball collision
+                                hitFlash.active = true;
+                                hitFlash.age = 0;
+                                
+                                gameState.lives--;
+                                if (gameState.lives <= 0) {
+                                    gameState.running = false; 
+                                    createExplosion(catcher.x + catcher.w / 2, catcher.y + catcher.h / 2, 54);
+                                    flash.active = true;
+                                    flash.age = 0;
+                                }
+                            } else if (o.type === 'red') { // Good object (BF) collision
+                                gameState.score++;
+                                if (gameState.score % 5 === 0) {
+                                    gameState.level++;
+                                    spawnInterval = Math.max(MIN_SPAWN_INTERVAL, spawnInterval - 80);
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                // --- Particles update ---
+                for (let i = particles.length - 1; i >= 0; i--) {
+                    const p = particles[i];
+                    p.age += dt;
+                    if (p.age >= p.life) particles.splice(i, 1);
+                    p.vy += 300 * dt; 
+                    p.x += p.vx * dt;
+                    p.y += p.vy * dt;
+                }
+
+                // --- Global flash update ---
+                if (flash.active) {
+                    flash.age += dt;
+                    if (flash.age >= flash.duration) flash.active = false;
+                }
+                
+                // --- Catcher hit flash update ---
+                if (hitFlash.active) {
+                    hitFlash.age += dt;
+                    if (hitFlash.age >= hitFlash.duration) hitFlash.active = false;
+                }
+
+                draw(rect.width, rect.height);
+                rafId = requestAnimationFrame(frame);
+            };
+
+            const resize = () => {
+                const rect = canvas.getBoundingClientRect();
+                dpr = window.devicePixelRatio || 1;
+                canvas.width = Math.round(rect.width * dpr);
+                canvas.height = Math.round(rect.height * dpr);
+                ctx.setTransform(dpr, 0, 0, dpr, 0, 0); 
+                
+                // Re-position catcher on resize
+                catcher.y = rect.height - 80 - catcher.h - 6;
+                catcher.x = clamp(catcher.x, 6, rect.width - catcher.w - 6);
+            };
+
+            // --- Game Controls ---
+
+            const resetGame = () => {
+                objects.length = 0;
+                particles.length = 0;
+                gameState.score = 0;
+                gameState.lives = 3;
+                gameState.level = 1;
+                spawnInterval = INITIAL_SPAWN_INTERVAL;
+                nextObjectId = 1;
+                gameState.running = true; 
+                flash.active = false;
+                flash.age = 0;
+                hitFlash.active = false;
+                hitFlash.age = 0; 
+                
+                const rect = canvas.getBoundingClientRect();
+                catcher.x = rect.width / 2 - catcher.w / 2;
+                catcher.y = rect.height - 80 - catcher.h - 6;
+                updateHUD();
+            };
+
+            const toggleRunning = () => {
+                if (gameState.walletAddress) {
+                    gameState.running = !gameState.running;
+                    updateHUD();
+                }
+            };
+            
+            // --- Input Handling ---
+            
+            const checkButtonClicks = (pos) => {
+                if (gameState.lives <= 0 && flash.age < flash.duration) {
+                    return false;
+                }
+
+                for (const btn of gameOverButtons) {
+                    if (pos.x >= btn.x && pos.x <= btn.x + btn.w && pos.y >= btn.y && pos.y <= btn.y + btn.h) {
+                        if (btn.text === 'Reset Game') {
+                            resetGame();
+                            return true;
+                        } 
+                    }
+                }
+                return false;
+            };
+
+            const getPos = (e) => {
+                const rect = canvas.getBoundingClientRect();
+                return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+            };
+
+            const onPointerDown = (e) => {
+                const pos = getPos(e);
+                const rect = canvas.getBoundingClientRect();
+
+                if (!gameState.running && gameState.walletAddress) {
+                    if (checkButtonClicks(pos)) return;
+                }
+                
+                if (gameState.running && gameState.walletAddress) {
+                    dragging = true; 
+                    catcher.x = clamp(pos.x - catcher.w / 2, 6, rect.width - catcher.w - 6);
+                }
+            };
+            
+            const onPointerMove = (e) => {
+                if (!gameState.running || gameState.lives <= 0 || !gameState.walletAddress) return;
+                if (!dragging) return; 
+                const pos = getPos(e);
+                const rect = canvas.getBoundingClientRect();
+                catcher.x = clamp(pos.x - catcher.w / 2, 6, rect.width - catcher.w - 6);
+            };
+            
+            const onPointerUp = () => (dragging = false); 
+
+            const onKey = (e) => {
+                if (!gameState.walletAddress) return;
+                if (gameState.lives <= 0 && flash.age < flash.duration) return;
+
+                const rect = canvas.getBoundingClientRect();
+                const step = 28;
+
+                if (gameState.running) {
+                    if (e.key === 'ArrowLeft') catcher.x = clamp(catcher.x - step, 6, rect.width - catcher.w - 6);
+                    else if (e.key === 'ArrowRight') catcher.x = clamp(catcher.x + step, 6, rect.width - catcher.w - 6);
+                }
+                
+                if (e.key === ' ' && gameState.lives > 0) {
+                    toggleRunning();
+                }
+            };
+
+            // --- Initialization ---
+
+            const init = () => {
+                canvas = document.getElementById('gameCanvas');
+                ctx = canvas.getContext('2d');
+
+                resize();
+                window.addEventListener('resize', resize);
+                
+                // Input listeners
+                canvas.addEventListener('pointerdown', onPointerDown);
+                window.addEventListener('pointermove', onPointerMove);
+                window.addEventListener('pointerup', onPointerUp);
+                window.addEventListener('keydown', onKey);
+                
+                // Button listeners (external HTML buttons)
+                document.getElementById('resetGameBtn').addEventListener('click', resetGame);
+                document.getElementById('toggleRunningBtn').addEventListener('click', toggleRunning);
+                document.getElementById('disconnectBtn').addEventListener('click', () => {
+                    gameState.walletAddress = null;
+                    gameState.running = false;
+                    objects.length = 0;
+                    particles.length = 0;
+                    document.getElementById('connectionScreen').style.opacity = 1;
+                    document.getElementById('connectionScreen').style.pointerEvents = 'auto';
+                    document.getElementById('gameControls').setAttribute('data-connected', 'false');
+                    document.getElementById('disconnectBtn').classList.add('hidden');
+                    document.getElementById('connectionStatus').textContent = "Status: Disconnected";
+                });
+                
+                // Start game loop
+                rafId = requestAnimationFrame(frame);
+                
+                // Initial draw for connection screen
+                draw(canvas.width / dpr, canvas.height / dpr);
+
+                // Initialize Wallet Connection Screen
+                document.getElementById('connectWalletBtn').addEventListener('click', async () => {
+                    const statusElem = document.getElementById('connectionStatus');
+                    const connectBtn = document.getElementById('connectWalletBtn');
+                    
+                    connectBtn.disabled = true;
+                    statusElem.textContent = "Status: Connecting...";
+                    
+                    try {
+                        const initSuccess = await window.WalletKit.init({ USE_BASE_SEPOLIA: false });
+                        if (!initSuccess) {
+                            statusElem.textContent = "Status: No provider found.";
+                            connectBtn.disabled = false;
+                            return;
+                        }
+                        
+                        const connectSuccess = await window.WalletKit.connect();
+
+                        if (connectSuccess) {
+                            gameState.walletAddress = window.WalletKit.getAddress();
+                            statusElem.textContent = "Status: Connected. Ensuring Base network...";
+                            
+                            const networkSuccess = await window.WalletKit.ensureBaseNetwork();
+                            
+                            if (networkSuccess) {
+                                statusElem.textContent = "Status: Ready. Press 'Resume' to start.";
+                                
+                                // Hide connection screen
+                                document.getElementById('connectionScreen').style.opacity = 0;
+                                document.getElementById('connectionScreen').style.pointerEvents = 'none';
+                                document.getElementById('gameControls').setAttribute('data-connected', 'true');
+                                document.getElementById('disconnectBtn').classList.remove('hidden');
+                                
+                                // Initial setup after connection
+                                resetGame(); 
+                                gameState.running = false; // Start paused
+                                updateHUD();
+                            } else {
+                                statusElem.textContent = "Status: Please switch to Base Mainnet.";
+                                gameState.walletAddress = null;
+                                connectBtn.disabled = false;
+                            }
+                        } else {
+                            statusElem.textContent = "Status: Connection rejected.";
+                            connectBtn.disabled = false;
+                        }
+                    } catch (error) {
+                        console.error("Connection error:", error);
+                        statusElem.textContent = "Status: Connection failed.";
+                        connectBtn.disabled = false;
+                    }
+                });
+            };
+
+            return { init, toggleRunning, resetGame };
+        })();
+
+        window.onload = Game.init;
+    </script>
+</body>
+</html>
