@@ -79,7 +79,13 @@
         </div>
     </div>
 
-    <script>
+    <script type="module">
+
+        // ========= 1. Farcaster SDK Integration (Adopted from provided code) =========
+        import { sdk } from 'https://esm.sh/@farcaster/miniapp-sdk';
+        sdk.actions.ready(); // Notify Farcaster that the app is ready (Fixes splash screen issue)
+        // =========================================================================
+
         // --- Farcaster/EIP-1193 Wallet Kit for Base ---
         const DEFAULTS = {
             USE_BASE_SEPOLIA: false,
@@ -114,12 +120,14 @@
             } catch (_) { return '0x0' }
         }
 
+        // --- Provider Detection Logic (Uses sdk.wallet.getEthereumProvider) ---
         async function getFarcasterProviderFromHost() {
             try {
-                const caps = await window?.sdk?.getCapabilities?.()
+                // Now uses the imported 'sdk' object
+                const caps = await sdk?.getCapabilities?.() 
                 const has = Array.isArray(caps) && caps.includes('wallet.getEthereumProvider')
                 if (has) {
-                    const p = window?.sdk?.wallet?.getEthereumProvider?.()
+                    const p = sdk?.wallet?.getEthereumProvider?.()
                     if (p) return p
                 }
             } catch (_) {}
@@ -128,7 +136,6 @@
 
         async function createDevWalletProvider(rpcUrl, privKey, chainIdHex) {
             // Lazy import ethers only if needed
-            // NOTE: The import must be wrapped to run only when needed, otherwise it throws errors in non-EVM environments.
             const { Wallet, JsonRpcProvider } = await import('https://esm.sh/ethers@6')
             const provider = new JsonRpcProvider(rpcUrl)
             const wallet = new Wallet(privKey, provider)
@@ -798,15 +805,6 @@
                 }
             };
 
-            // --- Initialization ---
-            // Function to notify Farcaster SDK that the app is ready (addresses the "Ready not called" issue)
-            const notifySdkReady = () => {
-                if (window.sdk && window.sdk.actions && window.sdk.actions.ready) {
-                    window.sdk.actions.ready();
-                }
-            };
-
-
             const init = () => {
                 canvas = document.getElementById('gameCanvas');
                 ctx = canvas.getContext('2d');
@@ -833,7 +831,6 @@
                     document.getElementById('gameControls').setAttribute('data-connected', 'false');
                     document.getElementById('disconnectBtn').classList.add('hidden');
                     document.getElementById('connectionStatus').textContent = "Status: Disconnected";
-                    notifySdkReady(); // Notify SDK when disconnecting (splash screen might be re-shown)
                 });
                 
                 // Start game loop
@@ -842,7 +839,6 @@
                 // Initial draw for connection screen
                 draw(canvas.width / dpr, canvas.height / dpr);
                 
-                notifySdkReady(); // Notify Farcaster SDK immediately upon init
 
                 // Initialize Wallet Connection Screen
                 document.getElementById('connectWalletBtn').addEventListener('click', async () => {
