@@ -57,7 +57,7 @@
             <button id="resetGameBtn" class="px-4 py-2 text-sm font-semibold text-white bg-green-600 rounded-lg shadow-md hover:bg-green-700 transition duration-150 transform hover:scale-105">
                 <!-- Reset Icon -->
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 inline mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 0014.17 4H5.98a4 4 0 100 8h.02c.7 0 1.343-.205 1.9-.554M16 16v-5h-.582m0 0a8.001 8.001 0 00-11.356 2.05A4 4 0 1018.02 12h-.02a.7.7 0 01-1.9.554" />
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 0014.17 4H5.98a4 4 0 100 8h.02c.7 0 1.343-.205 1.9-.554M16 16v-5h-.582m0 0a8.001 8.000 0 00-11.356 2.05A4 4 0 1018.02 12h-.02a.7.7 0 01-1.9.554" />
                 </svg>
                 Reset Game
             </button>
@@ -294,7 +294,7 @@
             const GRAVITY = 300;
             const BASE_BOMB_PROB = 0.05; // تم التعديل: الاحتمالية الأساسية للقنابل 5% (كانت 25%)
             const BOMB_PROB_PER_LEVEL = 0.12;
-            const MAX_BOMB_PROB = 0.95;
+            const MAX_BOMB_PROB = 0.80; // تم التعديل: الحد الأقصى لاحتمالية القنابل هو 80% لضمان ظهور الكرات الزرقاء
             
             let canvas, ctx;
             let rafId = null;
@@ -327,7 +327,7 @@
 
             const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
-            // تم تصحيح الخطأ المطبعي: استخدام BOMB_PROB_PER_LEVEL بدلاً من BOMB_BOMB_PROB_PER_LEVEL
+            // يتم زيادة احتمالية القنبلة تدريجياً، ولكن الحد الأقصى تم تحديده بـ 80%
             const bombProbabilityForLevel = (lvl) => clamp(BASE_BOMB_PROB + (lvl - 1) * BOMB_PROB_PER_LEVEL, 0, MAX_BOMB_PROB);
 
             const chooseType = (lvl) => {
@@ -617,6 +617,7 @@
 
                     ctx.shadowBlur = 0;
 
+                    /* --- تم إزالة الزر المرسوم على الكانفاس ---
                     const buttonW = 150;
                     const buttonH = 40;
                     const totalButtonsWidth = buttonW; 
@@ -625,6 +626,7 @@
                     
                     const resetBtn = drawButton(startX, buttonY, buttonW, buttonH, 'Reset Game', '#ef4444'); 
                     gameOverButtons.push(resetBtn);
+                    */
                     
                 } else if (!gameState.running && gameState.lives > 0) {
                     // Pause Screen
@@ -638,6 +640,7 @@
                     const pauseY = h / 2 - 30;
                     ctx.fillText('PAUSED', w / 2, pauseY);
                     
+                    /* --- تم إزالة الزر المرسوم على الكانفاس ---
                     const buttonW = 150;
                     const buttonH = 40;
                     const totalButtonsWidth = buttonW;
@@ -646,6 +649,7 @@
                     
                     const resetBtn = drawButton(startX, buttonY, buttonW, buttonH, 'Reset Game', '#f97316'); 
                     gameOverButtons.push(resetBtn);
+                    */
                 }
             };
             
@@ -780,6 +784,8 @@
                     return false;
                 }
 
+                // بما أننا أزلنا الزر المرسوم على الكانفاس، لم يعد هناك حاجة للتحقق من gameOverButtons
+                /*
                 for (const btn of gameOverButtons) {
                     if (pos.x >= btn.x && pos.x <= btn.x + btn.w && pos.y >= btn.y && pos.y <= btn.y + btn.h) {
                         if (btn.text === 'Reset Game') {
@@ -788,6 +794,7 @@
                         } 
                     }
                 }
+                */
                 return false;
             };
 
