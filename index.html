@@ -27,8 +27,8 @@
 </head>
 <body class="bg-gray-900 flex items-center justify-center min-h-screen p-4">
 
-    <!-- CHANGED: max-w-md to max-w-sm and reduced height to h-[80vh] for smaller resolution -->
-    <div id="appContainer" class="flex flex-col w-full max-w-sm h-[80vh] bg-gray-100 rounded-xl shadow-2xl">
+    <!-- تم التعديل: إزالة القيود الصارمة على الحجم واستخدام مساحة أكبر -->
+    <div id="appContainer" class="flex flex-col w-full md:max-w-lg lg:max-w-xl h-[95vh] bg-gray-100 rounded-xl shadow-2xl">
         <div class="flex-grow relative overflow-hidden rounded-lg bg-white">
             <!-- Game Canvas -->
             <canvas id="gameCanvas"></canvas>
@@ -61,12 +61,12 @@
                 </svg>
                 Reset Game
             </button>
-            <button id="toggleRunningBtn" class="px-4 py-2 text-sm font-semibold text-white rounded-lg shadow-md transition duration-150 transform hover:scale-105 bg-blue-500 hover:bg-blue-600">
+            <button id="toggleRunningBtn" class="px-4 py-2 text-sm font-semibold text-white rounded-lg shadow-md transition duration-150 transform hover:scale-105 bg-yellow-500 hover:bg-yellow-600">
                 <!-- Resume Icon -->
                 <svg id="toggleIcon" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 inline mr-1" viewBox="0 0 20 20" fill="currentColor">
-                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd" />
+                    <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd" />
                 </svg>
-                <span id="toggleText">Resume</span>
+                <span id="toggleText">Pause</span>
             </button>
             <button id="disconnectBtn" class="px-4 py-2 text-sm font-semibold text-white bg-red-600 rounded-lg shadow-md hover:bg-red-700 transition duration-150 transform hover:scale-105 hidden">
                 Disconnect
@@ -616,17 +616,6 @@
                     ctx.fillText('GAME OVER', w / 2, gameOverY);
 
                     ctx.shadowBlur = 0;
-
-                    /* --- تم إزالة الزر المرسوم على الكانفاس ---
-                    const buttonW = 150;
-                    const buttonH = 40;
-                    const totalButtonsWidth = buttonW; 
-                    const startX = w / 2 - totalButtonsWidth / 2; 
-                    const buttonY = gameOverY + 80;
-                    
-                    const resetBtn = drawButton(startX, buttonY, buttonW, buttonH, 'Reset Game', '#ef4444'); 
-                    gameOverButtons.push(resetBtn);
-                    */
                     
                 } else if (!gameState.running && gameState.lives > 0) {
                     // Pause Screen
@@ -640,16 +629,6 @@
                     const pauseY = h / 2 - 30;
                     ctx.fillText('PAUSED', w / 2, pauseY);
                     
-                    /* --- تم إزالة الزر المرسوم على الكانفاس ---
-                    const buttonW = 150;
-                    const buttonH = 40;
-                    const totalButtonsWidth = buttonW;
-                    const startX = w / 2 - totalButtonsWidth / 2;
-                    const buttonY = pauseY + 80;
-                    
-                    const resetBtn = drawButton(startX, buttonY, buttonW, buttonH, 'Reset Game', '#f97316'); 
-                    gameOverButtons.push(resetBtn);
-                    */
                 }
             };
             
