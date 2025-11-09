@@ -292,10 +292,10 @@
             const INITIAL_SPAWN_INTERVAL = 900;
             const MIN_SPAWN_INTERVAL = 300;
             const GRAVITY = 300;
-            const BASE_BOMB_PROB = 0.25;
-            const BOMB_PROB_PER_LEVEL = 0.12; 
-            const MAX_BOMB_PROB = 0.95; 
-
+            const BASE_BOMB_PROB = 0.05; // تم التعديل: الاحتمالية الأساسية للقنابل 5% (كانت 25%)
+            const BOMB_PROB_PER_LEVEL = 0.12;
+            const MAX_BOMB_PROB = 0.95;
+            
             let canvas, ctx;
             let rafId = null;
             let lastTime = performance.now();
@@ -327,7 +327,8 @@
 
             const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
-            const bombProbabilityForLevel = (lvl) => clamp(BASE_BOMB_PROB + (lvl - 1) * BOMB_BOMB_PROB_PER_LEVEL, 0, MAX_BOMB_PROB);
+            // تم تصحيح الخطأ المطبعي: استخدام BOMB_PROB_PER_LEVEL بدلاً من BOMB_BOMB_PROB_PER_LEVEL
+            const bombProbabilityForLevel = (lvl) => clamp(BASE_BOMB_PROB + (lvl - 1) * BOMB_PROB_PER_LEVEL, 0, MAX_BOMB_PROB);
 
             const chooseType = (lvl) => {
                 const bombP = bombProbabilityForLevel(lvl);
@@ -413,7 +414,7 @@
                 // Cut out the horizontal slot (using the canvas background color to mask)
                 ctx.fillStyle = '#0ea5b7'; 
                 const slotW = r * 2 * 0.7; 
-                const slotH = r * 0.25;    
+                const slotH = r * 0.25;   
                 const slotX = x - r;      
                 const slotY = y - slotH / 2;
                 
