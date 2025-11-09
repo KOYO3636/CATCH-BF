@@ -296,6 +296,10 @@
             const BOMB_PROB_PER_LEVEL = 0.12;
             const MAX_BOMB_PROB = 0.80; // تم التعديل: الحد الأقصى لاحتمالية القنابل هو 80% لضمان ظهور الكرات الزرقاء
             
+            // تم تحديد ارتفاع منطقة الأرضية الجديدة
+            const GROUND_HEIGHT = 40; 
+            const CATCHER_MARGIN = 6; // المسافة بين الملتقط والأرضية
+
             let canvas, ctx;
             let rafId = null;
             let lastTime = performance.now();
@@ -549,7 +553,8 @@
 
                 // 3. Draw ground/catcher area
                 ctx.fillStyle = '#ffffff';
-                ctx.fillRect(0, h - 80, w, 80);
+                // استخدام الارتفاع الجديد للأرضية
+                ctx.fillRect(0, h - GROUND_HEIGHT, w, GROUND_HEIGHT);
 
                 // 4. Draw Catcher
                 ctx.fillStyle = '#111827';
@@ -655,15 +660,18 @@
                         o.x += o.vx * dt;
                         o.y += o.vy * dt;
 
-                        if (o.y - o.r > rect.height - 80) {
+                        // تحديث شرط السقوط: الآن يسقط الجسم خارج المنطقة إذا تجاوز ارتفاع الأرضية الجديد
+                        if (o.y - o.r > rect.height - GROUND_HEIGHT) {
                             objects.splice(i, 1);
                             continue;
                         }
 
                         if (o.x - o.r < 0 || o.x + o.r > rect.width) o.vx *= -0.6;
 
-                        // Check collision with catcher
-                        if (o.x > catcher.x && o.x < catcher.x + catcher.w && o.y + o.r > catcher.y && o.y - o.r < catcher.y + catcher.h) {
+                        // تحقق من الاصطدام مع الملتقط
+                        // الملتقط يكون داخل منطقة الأرضية (GROUND_HEIGHT)
+                        const catcherBottomY = catcher.y + catcher.h;
+                        if (o.x > catcher.x && o.x < catcher.x + catcher.w && o.y + o.r > catcher.y && o.y - o.r < catcherBottomY) {
                             objects.splice(i, 1);
                             
                             if (o.type === 'black') { // Fireball collision
@@ -721,9 +729,9 @@
                 canvas.height = Math.round(rect.height * dpr);
                 ctx.setTransform(dpr, 0, 0, dpr, 0, 0); 
                 
-                // Re-position catcher on resize
-                catcher.y = rect.height - 80 - catcher.h - 6;
-                catcher.x = clamp(catcher.x, 6, rect.width - catcher.w - 6);
+                // إعادة تحديد موقع الملتقط ليصبح أعلى المنطقة الأرضية الجديدة
+                catcher.y = rect.height - GROUND_HEIGHT - catcher.h - CATCHER_MARGIN;
+                catcher.x = clamp(catcher.x, CATCHER_MARGIN, rect.width - catcher.w - CATCHER_MARGIN);
             };
 
             // --- Game Controls ---
@@ -744,7 +752,8 @@
                 
                 const rect = canvas.getBoundingClientRect();
                 catcher.x = rect.width / 2 - catcher.w / 2;
-                catcher.y = rect.height - 80 - catcher.h - 6;
+                // إعادة تحديد موقع الملتقط ليصبح أعلى المنطقة الأرضية الجديدة
+                catcher.y = rect.height - GROUND_HEIGHT - catcher.h - CATCHER_MARGIN;
                 updateHUD();
             };
 
@@ -763,17 +772,6 @@
                     return false;
                 }
 
-                // بما أننا أزلنا الزر المرسوم على الكانفاس، لم يعد هناك حاجة للتحقق من gameOverButtons
-                /*
-                for (const btn of gameOverButtons) {
-                    if (pos.x >= btn.x && pos.x <= btn.x + btn.w && pos.y >= btn.y && pos.y <= btn.y + btn.h) {
-                        if (btn.text === 'Reset Game') {
-                            resetGame();
-                            return true;
-                        } 
-                    }
-                }
-                */
                 return false;
             };
 
@@ -792,7 +790,7 @@
                 
                 if (gameState.running && gameState.walletAddress) {
                     dragging = true; 
-                    catcher.x = clamp(pos.x - catcher.w / 2, 6, rect.width - catcher.w - 6);
+                    catcher.x = clamp(pos.x - catcher.w / 2, CATCHER_MARGIN, rect.width - catcher.w - CATCHER_MARGIN);
                 }
             };
             
@@ -801,7 +799,7 @@
                 if (!dragging) return; 
                 const pos = getPos(e);
                 const rect = canvas.getBoundingClientRect();
-                catcher.x = clamp(pos.x - catcher.w / 2, 6, rect.width - catcher.w - 6);
+                catcher.x = clamp(pos.x - catcher.w / 2, CATCHER_MARGIN, rect.width - catcher.w - CATCHER_MARGIN);
             };
             
             const onPointerUp = () => (dragging = false); 
@@ -814,8 +812,8 @@
                 const step = 28;
 
                 if (gameState.running) {
-                    if (e.key === 'ArrowLeft') catcher.x = clamp(catcher.x - step, 6, rect.width - catcher.w - 6);
-                    else if (e.key === 'ArrowRight') catcher.x = clamp(catcher.x + step, 6, rect.width - catcher.w - 6);
+                    if (e.key === 'ArrowLeft') catcher.x = clamp(catcher.x - step, CATCHER_MARGIN, rect.width - catcher.w - CATCHER_MARGIN);
+                    else if (e.key === 'ArrowRight') catcher.x = clamp(catcher.x + step, CATCHER_MARGIN, rect.width - catcher.w - CATCHER_MARGIN);
                 }
                 
                 if (e.key === ' ' && gameState.lives > 0) {
