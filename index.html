@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CATCH THE BF</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- تضمين مكتبة Tone.js لإنشاء المؤثرات الصوتية -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.min.js"></script>
     <style>
         /* Custom font */
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap');
@@ -67,6 +69,13 @@
                     <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd" />
                 </svg>
                 <span id="toggleText">Pause</span>
+            </button>
+            <button id="toggleSoundBtn" class="px-4 py-2 text-sm font-semibold text-white bg-gray-500 rounded-lg shadow-md hover:bg-gray-600 transition duration-150 transform hover:scale-105">
+                <!-- Speaker Icon -->
+                <svg id="soundIcon" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 inline mr-1" viewBox="0 0 20 20" fill="currentColor">
+                    <path fill-rule="evenodd" d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.707.707L6.586 13H4a1 1 0 01-1-1V8a1 1 0 011-1h2.586l1.707-1.707A1 1 0 019.383 3.076zM12.707 9.293a1 1 0 00-1.414 1.414L13.586 12l-2.293 2.293a1 1 0 001.414 1.414L15 13.414l2.293 2.293a1 1 0 001.414-1.414L16.414 12l2.293-2.293a1 1 0 00-1.414-1.414L15 10.586l-2.293-2.293z" clip-rule="evenodd" />
+                </svg>
+                Sound: Off
             </button>
             <button id="disconnectBtn" class="px-4 py-2 text-sm font-semibold text-white bg-red-600 rounded-lg shadow-md hover:bg-red-700 transition duration-150 transform hover:scale-105 hidden">
                 Disconnect
@@ -312,6 +321,7 @@
                 running: false,
                 walletAddress: null,
                 isWalletReady: false, // New state for connection screen UI
+                soundOn: false, // حالة تشغيل/إيقاف الصوت
             };
 
             const catcher = { x: 0, y: 0, w: 60, h: 28 }; // تم التعديل: تصغير العرض إلى 60
@@ -326,6 +336,53 @@
             const flash = { active: false, age: 0, duration: 2.0 }; // Global GAME OVER flash
             const hitFlash = { active: false, age: 0, duration: 0.15 }; // Catcher hit flash
             const gameOverButtons = []; // Stores button regions for click detection
+
+            // --- Sound Implementation using Tone.js ---
+            // Simpler Tone.js Synths for basic sound effects
+            const synthPick = new Tone.MembraneSynth().toDestination();
+            const synthHit = new Tone.NoiseSynth({
+                noise: { type: 'pink' },
+                envelope: { attack: 0.005, decay: 0.1, sustain: 0, release: 0.2 },
+            }).toDestination();
+            const synthGameOver = new Tone.Synth().toDestination();
+
+            const playPickSound = () => {
+                if (gameState.soundOn) {
+                    synthPick.triggerAttackRelease("C5", "8n");
+                }
+            };
+            
+            const playHitSound = () => {
+                if (gameState.soundOn) {
+                    synthHit.triggerAttackRelease("8n");
+                }
+            };
+
+            const playGameOverSound = () => {
+                 if (gameState.soundOn) {
+                    synthGameOver.triggerAttackRelease("C2", "2n", Tone.now());
+                    synthGameOver.triggerAttackRelease("G1", "1n", Tone.now() + 0.5);
+                }
+            };
+
+            const toggleSound = () => {
+                gameState.soundOn = !gameState.soundOn;
+                
+                // يجب أن يبدأ تشغيل Tone.js AudioContext بعد أول تفاعل للمستخدم
+                if (gameState.soundOn && Tone.context.state !== 'running') {
+                    Tone.start();
+                }
+
+                const soundBtn = document.getElementById('toggleSoundBtn');
+                const soundIcon = document.getElementById('soundIcon');
+                
+                soundBtn.textContent = `Sound: ${gameState.soundOn ? 'On' : 'Off'}`;
+                
+                // تحديث أيقونة الصوت
+                soundIcon.innerHTML = gameState.soundOn
+                    ? `<path d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd" />` // أيقونة السماعة (مفعلة)
+                    : `<path fill-rule="evenodd" d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.707.707L6.586 13H4a1 1 0 01-1-1V8a1 1 0 011-1h2.586l1.707-1.707A1 1 0 019.383 3.076zM12.707 9.293a1 1 0 00-1.414 1.414L13.586 12l-2.293 2.293a1 1 0 001.414 1.414L15 13.414l2.293 2.293a1 1 0 001.414-1.414L16.414 12l2.293-2.293a1 1 0 00-1.414-1.414L15 10.586l-2.293-2.293z" clip-rule="evenodd" />`; // أيقونة كتم الصوت (معطلة)
+            };
 
             // --- Utility Functions ---
 
@@ -399,7 +456,8 @@
                 ctx.translate(x, y);
                 ctx.scale(size / 24, size / 24);
                 ctx.beginPath();
-                ctx.fillStyle = filled ? '#ef4444' : '#9ca3af'; 
+                // تم تعديل الألوان
+                ctx.fillStyle = filled ? '#F87171' : '#60A5FA'; 
                 ctx.moveTo(12, 21);
                 ctx.bezierCurveTo(-3, 7, 6, -3, 12, 6);
                 ctx.bezierCurveTo(18, -3, 27, 7, 12, 21);
@@ -416,7 +474,8 @@
                 ctx.fill();
                 
                 // Cut out the horizontal slot (using the canvas background color to mask)
-                ctx.fillStyle = '#0ea5b7'; 
+                // تم تعديل لون الخلفية هنا
+                ctx.fillStyle = '#1E3A8A'; 
                 const slotW = r * 2 * 0.7; 
                 const slotH = r * 0.25;   
                 const slotX = x - r;      
@@ -527,7 +586,8 @@
 
             const draw = (w, h) => {
                 // 1. Clear background
-                ctx.fillStyle = '#0ea5b7'; 
+                // تم تعديل لون الخلفية إلى لون أزرق داكن متناسق
+                ctx.fillStyle = '#1E3A8A'; 
                 ctx.fillRect(0, 0, w, h);
 
                 // 2. Draw HUD (Hearts and Score)
@@ -536,7 +596,7 @@
                 const totalWidth = 3 * heartSize + 2 * gap;
                 const startX = Math.round(w / 2 - totalWidth / 2); 
                 
-                // تم تعديل الموضع العمودي من 22 إلى 40 لتجنب التداخل مع النص
+                // تم تعديل الموضع العمودي إلى 40
                 for (let i = 0; i < 3; i++) drawHeart(startX + i * (heartSize + gap), 40, heartSize, i < gameState.lives);
 
                 ctx.fillStyle = '#fff';
@@ -559,7 +619,8 @@
                 ctx.fillRect(0, h - GROUND_HEIGHT, w, GROUND_HEIGHT);
 
                 // 4. Draw Catcher
-                ctx.fillStyle = '#111827';
+                // تم تغيير لون الملتقط إلى الأصفر الساطع
+                ctx.fillStyle = '#FACC15';
                 ctx.fillRect(catcher.x, catcher.y, catcher.w, catcher.h);
                 
                 // --- Draw Catcher Hit Flash ---
@@ -610,7 +671,7 @@
                     ctx.fillStyle = 'rgba(0,0,0,0.65)';
                     ctx.fillRect(0, 0, w, h);
                     
-                    ctx.fillStyle = '#1f2937'; 
+                    ctx.fillStyle = '#fff'; // لون أبيض لنص أوضح
                     // GAME OVER font size is now 64px
                     ctx.font = 'bold 64px Inter, sans-serif'; 
                     ctx.textAlign = 'center';
@@ -684,6 +745,7 @@
                             if (o.type === 'black') { // Fireball collision
                                 hitFlash.active = true;
                                 hitFlash.age = 0;
+                                playHitSound(); // تشغيل صوت الضرر
                                 
                                 gameState.lives--;
                                 if (gameState.lives <= 0) {
@@ -691,9 +753,11 @@
                                     createExplosion(catcher.x + catcher.w / 2, catcher.y + catcher.h / 2, 54);
                                     flash.active = true;
                                     flash.age = 0;
+                                    playGameOverSound(); // تشغيل صوت نهاية اللعبة
                                 }
                             } else if (o.type === 'red') { // Good object (BF) collision
                                 gameState.score++;
+                                playPickSound(); // تشغيل صوت الالتقاط
                                 if (gameState.score % 5 === 0) {
                                     gameState.level++;
                                     spawnInterval = Math.max(MIN_SPAWN_INTERVAL, spawnInterval - 80);
@@ -843,6 +907,9 @@
                 window.addEventListener('pointermove', onPointerMove);
                 window.addEventListener('pointerup', onPointerUp);
                 window.addEventListener('keydown', onKey);
+
+                // --- إضافة مستمع لزر تشغيل/إيقاف الصوت ---
+                document.getElementById('toggleSoundBtn').addEventListener('click', toggleSound);
                 
                 // --- تعديل: إضافة إعادة رسم إجبارية عند النقر على زر إعادة التعيين الخارجي ---
                 document.getElementById('resetGameBtn').addEventListener('click', () => {
