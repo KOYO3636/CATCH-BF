@@ -535,7 +535,9 @@
                 const gap = 10;
                 const totalWidth = 3 * heartSize + 2 * gap;
                 const startX = Math.round(w / 2 - totalWidth / 2); 
-                for (let i = 0; i < 3; i++) drawHeart(startX + i * (heartSize + gap), 22, heartSize, i < gameState.lives);
+                
+                // تم تعديل الموضع العمودي من 22 إلى 40 لتجنب التداخل مع النص
+                for (let i = 0; i < 3; i++) drawHeart(startX + i * (heartSize + gap), 40, heartSize, i < gameState.lives);
 
                 ctx.fillStyle = '#fff';
                 // HUD font size is now 16px
@@ -617,8 +619,13 @@
                     ctx.shadowColor = 'rgba(255, 255, 255, 0.8)';
                     ctx.shadowBlur = 10; 
                     
-                    const gameOverY = h / 2 - 30;
-                    ctx.fillText('GAME OVER', w / 2, gameOverY);
+                    const gameOverY = h / 2 - 50; // رفع المركز قليلاً
+
+                    // سطر GAME
+                    ctx.fillText('GAME', w / 2, gameOverY);
+                    
+                    // سطر OVER
+                    ctx.fillText('OVER', w / 2, gameOverY + 80); // 80 بكسل تحت السطر الأول
 
                     ctx.shadowBlur = 0;
                     
