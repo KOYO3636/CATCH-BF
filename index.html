@@ -318,7 +318,15 @@
             // استخدام المسار المباشر للصورة المرفوعة
             backgroundImage.src = 'http://googleusercontent.com/uploaded:image_f84762.jpg-de880c7d-6ab3-4eae-a9fe-e94821c7aad7'; 
             let backgroundLoaded = false;
-            backgroundImage.onload = () => { backgroundLoaded = true; };
+            // FIX: Force a redraw once the image is loaded to ensure it appears immediately.
+            backgroundImage.onload = () => { 
+                backgroundLoaded = true; 
+                if (canvas && ctx) {
+                    const rect = canvas.getBoundingClientRect();
+                    // Force initial draw after image load
+                    draw(rect.width, rect.height);
+                }
+            };
 
 
             // Game State (equivalent to React State/Ref)
