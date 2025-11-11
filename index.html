@@ -313,6 +313,14 @@
             let rafId = null;
             let lastTime = performance.now();
             
+            // Image for the new galaxy background
+            const backgroundImage = new Image();
+            // استخدام المسار المباشر للصورة المرفوعة
+            backgroundImage.src = 'http://googleusercontent.com/uploaded:image_f84762.jpg-de880c7d-6ab3-4eae-a9fe-e94821c7aad7'; 
+            let backgroundLoaded = false;
+            backgroundImage.onload = () => { backgroundLoaded = true; };
+
+
             // Game State (equivalent to React State/Ref)
             const gameState = {
                 score: 0,
@@ -360,9 +368,9 @@
 
             const playGameOverSound = () => {
                  if (gameState.soundOn) {
-                    synthGameOver.triggerAttackRelease("C2", "2n", Tone.now());
-                    synthGameOver.triggerAttackRelease("G1", "1n", Tone.now() + 0.5);
-                }
+                     synthGameOver.triggerAttackRelease("C2", "2n", Tone.now());
+                     synthGameOver.triggerAttackRelease("G1", "1n", Tone.now() + 0.5);
+                 }
             };
 
             const toggleSound = () => {
@@ -475,10 +483,10 @@
                 
                 // Cut out the horizontal slot (using the canvas background color to mask)
                 // تم تعديل لون الخلفية هنا
-                ctx.fillStyle = '#1E3A8A'; 
+                ctx.fillStyle = 'rgba(0,0,0,0.1)'; // Use semi-transparent black for cutout effect
                 const slotW = r * 2 * 0.7; 
-                const slotH = r * 0.25;   
-                const slotX = x - r;      
+                const slotH = r * 0.25;    
+                const slotX = x - r;       
                 const slotY = y - slotH / 2;
                 
                 ctx.fillRect(slotX, slotY, slotW, slotH);
@@ -585,10 +593,16 @@
             };
 
             const draw = (w, h) => {
-                // 1. Clear background
-                // تم تعديل لون الخلفية إلى لون أزرق داكن متناسق
-                ctx.fillStyle = '#1E3A8A'; 
-                ctx.fillRect(0, 0, w, h);
+                // 1. Clear and Draw Background Image
+                ctx.clearRect(0, 0, w, h);
+                if (backgroundLoaded) {
+                    // ارسم الصورة، وقم بتمديدها لتناسب حجم الكانفاس
+                    ctx.drawImage(backgroundImage, 0, 0, w, h);
+                } else {
+                    // لون احتياطي إذا لم يتم تحميل الخلفية بعد
+                    ctx.fillStyle = '#1E3A8A'; 
+                    ctx.fillRect(0, 0, w, h);
+                }
 
                 // 2. Draw HUD (Hearts and Score)
                 const heartSize = 28;
@@ -613,8 +627,8 @@
                 ctx.fillText(`Lvl: ${gameState.level} | Addr: ${shortAddr}`, w - 18, 22);
 
 
-                // 3. Draw ground/catcher area
-                ctx.fillStyle = '#ffffff';
+                // 3. Draw ground/catcher area (Changed to transparent/very light for space theme)
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.05)'; // Very light transparent ground
                 // استخدام الارتفاع الجديد للأرضية
                 ctx.fillRect(0, h - GROUND_HEIGHT, w, GROUND_HEIGHT);
 
@@ -977,7 +991,7 @@
                             statusElem.textContent = `Status: ${error.message || "Payment failed. Try again."}`;
                             connectBtn.disabled = false;
                         } finally {
-                             // Re-enable button only if game didn't start (i.e., transaction failed/rejected)
+                               // Re-enable button only if game didn't start (i.e., transaction failed/rejected)
                             if (!gameState.running) {
                                 connectBtn.disabled = false;
                             }
